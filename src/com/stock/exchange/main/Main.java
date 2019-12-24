@@ -17,7 +17,7 @@ public class Main {
             while (true) {
                 Scanner scanner = new Scanner(System.in);
 
-                System.out.println("\n Select options \n 1. Enter 1 below and press enter to place order \n 2. Enter 2 below and press enter to generate final order report\n 3. Enter 2 below to exit \n");
+                System.out.println("\n Select options \n 1. Enter 1 below and press enter to place order \n 2. Enter 2 below and press enter to generate final order report\n 3. Enter 3 below to exit \n");
                 Integer input = scanner.nextInt();
 
                 if (input == 1) {
