@@ -7,6 +7,8 @@ import com.stock.exchange.entity.OrderBook;
 import com.stock.exchange.value.object.Quantity;
 import com.stock.exchange.value.object.TransactionType;
 
+import java.util.*;
+
 public class MatchEngine implements IMatchEngine {
 
     private static final MinPriceQueue priceQueue = MinPriceQueue.getInstance();
@@ -17,52 +19,87 @@ public class MatchEngine implements IMatchEngine {
 
         if (orderBook.getTransactionType().equals(TransactionType.buy)) {
 
+            double sum = 0.0;
+
+            List<OrderBook> cacheOrder = new ArrayList<>();
+
+            Map<Double, List<OrderBook>> priceMap = new HashMap<>();
+
             while ((orderBook.getQuantity().getQuantity() > 0)) {
 
                 OrderBook order = priceQueue.getMinOrder(orderBook.getStock());
 
-                if ((order != null) && (order.getPrice().getPrice() < orderBook.getPrice().getPrice())) {
+                if ((order != null) && (order.getPrice().getPrice() <= orderBook.getPrice().getPrice())) {
 
-                    if (order.getQuantity().getQuantity() >= orderBook.getQuantity().getQuantity()) {
+                    while (priceQueue.hasMoreOrder(orderBook.getStock()) &&
+                            (order != null) && (order.getPrice().getPrice() < orderBook.getPrice().getPrice()) &&
+                            (order.getQuantity().getQuantity() >= orderBook.getQuantity().getQuantity())) {
 
-                        Integer fQuant = order.getQuantity().getQuantity() - orderBook.getQuantity().getQuantity();
+                        order = priceQueue.removeMinOrder(orderBook.getStock());
 
-                        Integer remQuant = order.getQuantity().getQuantity() - fQuant - orderBook.getQuantity().getQuantity();
+                        if (priceMap.containsKey(order.getPrice().getPrice())) {
 
-                        Integer soldQ = order.getQuantity().getQuantity() - fQuant;
+                            priceMap.get(order.getPrice().getPrice()).add(order);
 
-                        OrderBookResponse orderBookResponse = new OrderBookResponse(order.getOrderID(), new Quantity(soldQ), order.getPrice(), orderBook.getOrderID());
-
-                        orderBookResponseList.addOrderBookResponse(orderBookResponse);
-
-                        if (fQuant <= 0) {
-                            priceQueue.removeMinOrder();
-                            orderBook.setQuantity(new Quantity(remQuant));
                         } else {
-                            order.setQuantity(new Quantity(fQuant));
-                            orderBook.setQuantity(new Quantity(remQuant));
-                        }
-                    } else {
-                        Integer fQuant = orderBook.getQuantity().getQuantity() - order.getQuantity().getQuantity();
 
-                        Integer remQuant = orderBook.getQuantity().getQuantity() - fQuant - order.getQuantity().getQuantity();
+                            List<OrderBook> books = new ArrayList<>();
+                            books.add(order);
 
-                        Integer soldQ = orderBook.getQuantity().getQuantity() - fQuant;
+                            priceMap.put(order.getPrice().getPrice(), books);
 
-                        OrderBookResponse orderBookResponse = new OrderBookResponse(order.getOrderID(), new Quantity(soldQ), order.getPrice(), orderBook.getOrderID());
-
-                        orderBookResponseList.addOrderBookResponse(orderBookResponse);
-
-                        if (remQuant <= 0) {
-                            priceQueue.removeMinOrder();
-                            orderBook.setQuantity(new Quantity(fQuant));
-                        } else {
-                            order.setQuantity(new Quantity(remQuant));
-                            orderBook.setQuantity(new Quantity(fQuant));
                         }
                     }
-                } else {
-                    break;
+
+                    List<OrderBook> orderBooks = priceMap.get(order.getPrice().getPrice());
+
+                    for (OrderBook book : orderBooks) {
+
+                        sum += book.getQuantity().getQuantity();
+
+                    }
+
+                    double ratio = orderBook.getQuantity().getQuantity() / (sum);
+
+                    System.out.println(ratio);
+
+                    orderBooks.forEach(e -> {
+
+                        Quantity quantity = null;
+
+                        if (ratio > 0.0) {
+                            quantity = new Quantity(e.getQuantity().getQuantity() * ratio);
+                        } else {
+                            quantity = new Quantity(e.getQuantity().getQuantity());
+                        }
+
+                        Quantity orderBookQ = orderBook.getQuantity();
+
+                        orderBook.setQuantity(new Quantity(orderBookQ.getQuantity() - quantity.getQuantity()));
+
+                        e.setQuantity(quantity);
+
+                        //TODO: Logic to update the final report is yet to be implemented
+                        //TODO: Corner case needs to be handled, currently just implemented the basic logic to handle duplicate prices,
+                        //old code is present in MatchEngine_Old file
+
+                        Double fQuant = 0.0;
+                        Double soldQ = 0.0;
+
+                        if (e.getQuantity().getQuantity() < orderBook.getQuantity().getQuantity()) {
+                            fQuant = orderBook.getQuantity().getQuantity() - e.getQuantity().getQuantity();
+                            soldQ = orderBook.getQuantity().getQuantity() - fQuant;
+                        } else {
+                            fQuant = e.getQuantity().getQuantity() - orderBook.getQuantity().getQuantity();
+                            soldQ = e.getQuantity().getQuantity() - fQuant;
+                        }
+
+                        OrderBookResponse orderBookResponse = new OrderBookResponse(e.getOrderID(), new Quantity(soldQ), e.getPrice(), orderBook.getOrderID());
+
+                        orderBookResponseList.addOrderBookResponse(orderBookResponse);
+
+                        priceQueue.addOrder(e);
+                    });
                 }
             }
         } else {
